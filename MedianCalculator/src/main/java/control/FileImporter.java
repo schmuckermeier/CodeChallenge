@@ -4,8 +4,8 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.function.Consumer;
 
 import common.Message;
@@ -13,70 +13,79 @@ import common.Message.MessageType;
 
 public class FileImporter {
 
-	/**
-	 * Read integer and doubles from given file. Invalid inputs will be ignored.
-	 * @param filePath
-	 * @param messageConsumer 
-	 * @return unsorted list of numbers
-	 */
-	List<Double> readNumbersFromFile(String filePath, Consumer<Message> messageConsumer) {
-
-		File importFile = new File(filePath);
-
-		List<Double> numbers = new ArrayList<>();
-		String currentLine = "";
-		try {
-			BufferedReader reader = createBufferedReader(importFile);
-
-			int lineNumber = 0;
-			currentLine = reader.readLine();
-			
-			while (currentLine != null) {
-				lineNumber++;
-				Double number = parseStringToNumber(currentLine, lineNumber, messageConsumer);
-				currentLine = reader.readLine();
-				
-				if(number != null){
-					numbers.add(number);
+	private static final int UPDATE_INTERVAL = 10;
+	
+	private static class ProgressWriter implements Runnable {
+		
+		private Consumer<Message> messageConsumer;
+		private Connection connection;
+		
+		boolean isStopped = false;
+		
+		public ProgressWriter(Consumer<Message> messageConsumer, Connection connection) {
+			this.messageConsumer = messageConsumer;
+			this.connection = connection;
+		}
+		
+		public void run() {
+			while(!isStopped){
+				try {
+					Thread.sleep(UPDATE_INTERVAL);
+					long count = new DBController().getCount(connection);
+					messageConsumer.accept(new Message(MessageType.INFO, "Wrote " + count  + " to database."));
+				} catch (Exception e) {
+					// do nothing just try again
 				}
 			}
+		}
+	}
 
-			reader.close();
+	public void writeNumbersToDB(Connection connection, String filePath, Consumer<Message> messageConsumer) throws SQLException {
+		File importFile = new File(filePath);
+		
+		ProgressWriter progress = new ProgressWriter(messageConsumer, connection);
+		Thread writeProgress = new Thread(progress);
+		writeProgress.start();
+		
+		try (BufferedReader reader = createBufferedReader(importFile)){
+
+			int lineNumber = 1;
+			String currentLine = reader.readLine();
+			
+			DBController dbController = new DBController();
+				
+				while (currentLine != null) {
+					Integer number = parseStringToNumber(currentLine, lineNumber, messageConsumer);
+					
+					if(number != null){
+						dbController.addNumber(connection, number);
+					}
+					
+					// prepare next iteration
+					lineNumber++;
+					currentLine = reader.readLine();
+				}
 
 		} catch (IOException e) {
 			messageConsumer.accept(new Message(MessageType.ERROR, "Could not read file with path " + filePath));
 		}
 
-		return numbers;
+		progress.isStopped = true;
 	}
 
 	//TEST
 	BufferedReader createBufferedReader(File importFile) throws FileNotFoundException {
 		return new BufferedReader(new FileReader(importFile));
 	}
-	
-	/**
-	 * Converts the given line to a number. <b>Empty lines</b> will be skipped without warning
-	 * @param line
-	 * @param lineNumber current line number for error message
-	 * @param messageConsumer 
-	 * @return number or null if line is empty or value could not be parsed
-	 */
-	Double parseStringToNumber(String line, int lineNumber, Consumer<Message> messageConsumer) {
-		Double number = null;
 
-		if (!line.isEmpty()) {
-
-			try {
-				if (line.contains(".")) {
-					number = Double.valueOf(line);
-				} else {
-					number = new Double( Integer.valueOf(line));
-				}
-			} catch (NumberFormatException e) {
-				messageConsumer.accept(new Message(MessageType.WARNING, "File contains invalid input in line " + lineNumber + " with content \"" + line + "\"."));
-			}
+	Integer parseStringToNumber(String line, int lineNumber, Consumer<Message> messageConsumer) {
+		try {
+			return Integer.valueOf(line);
+		} catch (NumberFormatException e) {
+			messageConsumer.accept(new Message(MessageType.WARNING,
+					"File contains invalid input in line " + lineNumber + " with content \"" + line + "\"."));
+			return null;
 		}
-		return number;
 	}
+
 }

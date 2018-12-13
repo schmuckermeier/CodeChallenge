@@ -3,6 +3,7 @@ package common;
 public class Message {
 	
 	public enum MessageType{
+		SUCCESS,
 		INFO,
 		WARNING,
 		ERROR
