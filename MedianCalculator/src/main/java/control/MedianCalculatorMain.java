@@ -10,14 +10,15 @@ public class MedianCalculatorMain {
 
 	public static void main(String[] args) {
 		
+		Consumer<Message> messageConsumer = m -> System.out.println(m.getType() + " : " + m.getMessageText());
 		if(args.length == 0 ){
-			System.out.println("No import file specified.");
+			messageConsumer.accept(new Message(MessageType.ERROR, "No import file specified."));
 			return;
 		}
 
 		String filePath = args[0];
 		
-		Consumer<Message> messageConsumer = m -> System.out.println(m.getType() + " : " + m.getMessageText());
+		messageConsumer.accept(new Message(MessageType.INFO, "Start calculation ...."));
 		
 		double median = Double.NaN;
 		

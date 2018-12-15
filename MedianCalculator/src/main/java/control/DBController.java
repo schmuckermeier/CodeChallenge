@@ -9,6 +9,7 @@ public class DBController {
 	
 	public Connection createConnection() throws SQLException, ClassNotFoundException{
 		Class.forName("com.mysql.cj.jdbc.Driver");
+		Class.forName("org.h2.Driver");
 		return DriverManager.getConnection("jdbc:h2:~/codechallenge");
 	}
 	
